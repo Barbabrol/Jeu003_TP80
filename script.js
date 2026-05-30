@@ -1,4 +1,4 @@
-// ==================== script.js - 20 VERBES ====================
+// ==================== script.js - 80 VERBES ====================
 const verbs = [
   {base: "be", past: "was/were", pp: "been", fr: "être", mastery: 0},
   {base: "have", past: "had", pp: "had", fr: "avoir", mastery: 0},
@@ -92,6 +92,11 @@ let currentScore = parseInt(localStorage.getItem('verbScore')) || 0;
 let currentStreak = 0;
 let currentVerb = null;
 let bestStreak = parseInt(localStorage.getItem('bestStreak')) || 0;
+
+// Variables globales pour le module Matching
+let selectedBaseItem = null;
+let selectedFrItem = null;
+let matchingPairsLeft = 0;
 
 function saveData() {
   localStorage.setItem('verbsData', JSON.stringify(verbs));
@@ -197,9 +202,9 @@ function startQuiz() {
 
 function checkQuiz(btn, selected, correct) {
   const isCorrect = selected === correct;
-  btn.style.background = isCorrect ? '#10b981' : '#ef4444';
+  btn.style.background = isCorrect ? 'var(--success)' : 'var(--error)';
   btn.style.color = 'white';
-  btn.style.borderColor = isCorrect ? '#10b981' : '#ef4444';
+  btn.style.borderColor = isCorrect ? 'var(--success)' : 'var(--error)';
 
   updateMastery(currentVerb.base, isCorrect);
   if (isCorrect) {
@@ -238,9 +243,9 @@ function startAudioQuiz() {
     btn.textContent = opt;
     btn.onclick = () => {
       const correct = opt === currentVerb.base;
-      btn.style.background = correct ? '#10b981' : '#ef4444';
+      btn.style.background = correct ? 'var(--success)' : 'var(--error)';
       btn.style.color = 'white';
-      btn.style.borderColor = correct ? '#10b981' : '#ef4444';
+      btn.style.borderColor = correct ? 'var(--success)' : 'var(--error)';
       updateMastery(currentVerb.base, correct);
       if (correct) { currentScore += 12; currentStreak++; } else { currentStreak = 0; }
       updateStats();
@@ -253,7 +258,120 @@ function startAudioQuiz() {
 
 // ===================== MATCHING =====================
 function startMatching() {
-  document.getElementById('matchingContent').innerHTML = `<p class="status-message">🔄 Module en cours d'adaptation...</p>`;
+  selectedBaseItem = null;
+  selectedFrItem = null;
+
+  // Prendre 5 verbes aléatoires parmi les 80 disponibles
+  const shuffledVerbs = [...verbs].sort(() => Math.random() - 0.5);
+  const selectedVerbs = shuffledVerbs.slice(0, 5);
+  matchingPairsLeft = selectedVerbs.length;
+
+  // Création des structures et mélange indépendant des deux colonnes
+  const bases = selectedVerbs.map(v => ({ text: v.base, id: v.base }));
+  const frs = selectedVerbs.map(v => ({ text: v.fr, id: v.base }));
+
+  bases.sort(() => Math.random() - 0.5);
+  frs.sort(() => Math.random() - 0.5);
+
+  let html = `<div class="matching-board">
+                <div class="matching-column" id="matchingBases"></div>
+                <div class="matching-column" id="matchingFrs"></div>
+              </div>`;
+  
+  document.getElementById('matchingContent').innerHTML = html;
+
+  const basesCol = document.getElementById('matchingBases');
+  const frsCol = document.getElementById('matchingFrs');
+
+  // Injecter la colonne gauche (Bases Verbales)
+  bases.forEach(b => {
+    const div = document.createElement('div');
+    div.className = 'matching-item';
+    div.textContent = b.text;
+    div.dataset.id = b.id;
+    div.onclick = () => selectMatchingItem(div, 'base');
+    basesCol.appendChild(div);
+  });
+
+  // Injecter la colonne droite (Traductions Françaises)
+  frs.forEach(f => {
+    const div = document.createElement('div');
+    div.className = 'matching-item';
+    div.textContent = f.text;
+    div.dataset.id = f.id;
+    div.onclick = () => selectMatchingItem(div, 'fr');
+    frsCol.appendChild(div);
+  });
+}
+
+function selectMatchingItem(element, type) {
+  if (element.classList.contains('matched')) return;
+
+  if (type === 'base') {
+    if (selectedBaseItem) selectedBaseItem.classList.remove('selected');
+    selectedBaseItem = element;
+    selectedBaseItem.classList.add('selected');
+  } else {
+    if (selectedFrItem) selectedFrItem.classList.remove('selected');
+    selectedFrItem = element;
+    selectedFrItem.classList.add('selected');
+  }
+
+  // Vérification si deux items sont sélectionnés de part et d'autre
+  if (selectedBaseItem && selectedFrItem) {
+    const baseId = selectedBaseItem.dataset.id;
+    const frId = selectedFrItem.dataset.id;
+
+    if (baseId === frId) {
+      // Succès : Association correcte
+      selectedBaseItem.className = 'matching-item matched';
+      selectedFrItem.className = 'matching-item matched';
+      
+      updateMastery(baseId, true);
+      currentScore += 5;
+      currentStreak++;
+      updateStats();
+      
+      selectedBaseItem = null;
+      selectedFrItem = null;
+      matchingPairsLeft--;
+
+      // Victoire complète sur le tableau en cours
+      if (matchingPairsLeft === 0) {
+        setTimeout(() => {
+          document.getElementById('matchingContent').innerHTML = `
+            <div class="status-message">
+              🎉 Excellent ! Toutes les associations sont correctes.<br>
+              <strong>+25 points bonus accordés !</strong>
+            </div>`;
+          currentScore += 25;
+          updateStats();
+          saveData();
+        }, 1000);
+      }
+    } else {
+      // Erreur : Mauvaise association
+      const item1 = selectedBaseItem;
+      const item2 = selectedFrItem;
+      
+      item1.className = 'matching-item error';
+      item2.className = 'matching-item error';
+      
+      updateMastery(baseId, false);
+      currentStreak = 0;
+      updateStats();
+      
+      selectedBaseItem = null;
+      selectedFrItem = null;
+
+      // Réinitialiser l'état visuel après 1 seconde
+      setTimeout(() => {
+        if (item1.className.includes('error')) item1.className = 'matching-item';
+        if (item2.className.includes('error')) item2.className = 'matching-item';
+      }, 1000);
+    }
+    saveData();
+  }
 }
 
 // ===================== STATS =====================
@@ -281,7 +399,7 @@ function showSection(section) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById(section).classList.add('active');
 
-  // Mettre à jour l'état actif sur les boutons de navigation
+  // Ajuster l'activation visuelle sur les onglets de navigation
   document.querySelectorAll('nav button').forEach(btn => {
     btn.classList.remove('active');
     if(btn.getAttribute('onclick').includes(section)) {
@@ -292,13 +410,14 @@ function showSection(section) {
   if (section === 'list') searchVerbs();
   if (section === 'flashcards') showFlashcard();
   if (section === 'quiz') startQuiz();
+  if (section === 'matching') startMatching();
   if (section === 'audioquiz') startAudioQuiz();
   if (section === 'stats') showStats();
 }
 
 // ===================== INIT =====================
 window.onload = () => {
-  // Charger les données sauvegardées si existantes
+  // Synchronisation de la mémoire locale de maîtrise
   const savedVerbs = localStorage.getItem('verbsData');
   if (savedVerbs) {
     try {
@@ -314,7 +433,7 @@ window.onload = () => {
   showSection('list');
   document.getElementById('versionTitle').textContent = "Module standard (80 verbes)";
 
-  // Dark mode toggle
+  // Gestion alternative Thème Sombre / Thème Clair
   document.getElementById('themeToggle').addEventListener('click', () => {
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
